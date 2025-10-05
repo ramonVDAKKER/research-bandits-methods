@@ -1,13 +1,15 @@
 [project]
 name = "research-bandits-methods"
-version = "0.1.0"
-description = "Add your description here"
+version = "0.0.1"
+description = "Python package supporting Monte Carlo simulations for bandits."
 readme = "README.md"
 authors = [
     { name = "ramonvdakker", email = "ramon.vdakker@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "numpy>=2.3.3",
+]
 
 [project.scripts]
 research-bandits-methods = "research_bandits_methods:main"
@@ -19,7 +21,11 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "bandit[toml]>=1.8.0",
+    "jupyter>=1.0.0",
+    "nbconvert>=7.0.0",
+    "nbformat>=5.0.0",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
     "pytest-cov>=7.0.0",
+    "scipy>=1.15.0",
 ]
