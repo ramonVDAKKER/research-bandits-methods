@@ -6,6 +6,7 @@ This module supports:
 """
 
 from abc import ABC, abstractmethod
+
 import numpy as np
 
 _FLOAT_TOL = 1e-10
@@ -89,6 +90,7 @@ class GaussianRewards(RewardDistribution):
         means: np.ndarray,
         variances: np.ndarray | float = 1.0,
     ):
+        """Initialize GaussianRewards distribution."""
         self.means = np.asarray(means, dtype=float)
         self.K = len(self.means)
 
@@ -120,7 +122,7 @@ class GaussianRewards(RewardDistribution):
         return rng.normal(self.means[arm], np.sqrt(self.variances[arm]))
 
     def __repr__(self) -> str:
-        """String representation."""
+        """Return string representation."""
         return f"GaussianRewards(means={self.means}, variances={self.variances})"
 
 
@@ -139,6 +141,7 @@ class BernoulliRewards(RewardDistribution):
     """
 
     def __init__(self, probs: np.ndarray):
+        """Initialize BernoulliRewards distribution."""
         self.probs = np.asarray(probs, dtype=float)
         self.K = len(self.probs)
         if not np.all((self.probs >= 0.0) & (self.probs <= 1.0)):
@@ -158,7 +161,7 @@ class BernoulliRewards(RewardDistribution):
         return float(rng.binomial(1, self.probs[arm]))
 
     def __repr__(self) -> str:
-        """String representation."""
+        """Return string representation."""
         return f"BernoulliRewards(probs={self.probs})"
 
 
@@ -190,6 +193,7 @@ class StudentTRewards(RewardDistribution):
         means: np.ndarray,
         df: np.ndarray | float = 3.0,
     ):
+        """Initialize StudentTRewards distribution."""
         self.means = np.asarray(means, dtype=float)
         self.K = len(self.means)
 
@@ -221,7 +225,7 @@ class StudentTRewards(RewardDistribution):
         return self.means[arm] + rng.standard_t(self.df[arm])
 
     def __repr__(self) -> str:
-        """String representation."""
+        """Return string representation."""
         return f"StudentTRewards(means={self.means}, df={self.df})"
 
 
@@ -278,6 +282,7 @@ class MixtureDistribution(RewardDistribution):
     """
 
     def __init__(self, components: list, weights: np.ndarray):
+        """Initialize MixtureDistribution."""
         if not components:
             raise ValueError("components cannot be empty")
 
@@ -287,9 +292,7 @@ class MixtureDistribution(RewardDistribution):
         # Validate all components have same K
         K_values = [comp.K for comp in components]
         if len(set(K_values)) > 1:
-            raise ValueError(
-                f"All components must have same K, got {K_values}"
-            )
+            raise ValueError(f"All components must have same K, got {K_values}")
         self.K = K_values[0]
 
         # Handle weights: 1D (broadcast) or 2D (per-arm)
@@ -311,9 +314,7 @@ class MixtureDistribution(RewardDistribution):
                 )
             self.weights = weights
         else:
-            raise ValueError(
-                f"Weights must be 1D or 2D array, got {weights.ndim}D"
-            )
+            raise ValueError(f"Weights must be 1D or 2D array, got {weights.ndim}D")
 
         # Validate weights: non-negative and sum to 1 per arm
         if np.any(self.weights < 0.0):
@@ -332,16 +333,14 @@ class MixtureDistribution(RewardDistribution):
         # Generate counterfactuals from all components
         all_counterfactuals = np.stack(
             [comp.generate_counterfactuals(T, R, rng) for comp in self.components],
-            axis=0
+            axis=0,
         )  # (n_components, T, K, R)
 
         # Generate component selections per arm
         counterfactuals = np.zeros((T, self.K, R))
         for k in range(self.K):
             # Select components for arm k at all (t, r)
-            selections = rng.choice(
-                self.n_components, size=(T, R), p=self.weights[k]
-            )
+            selections = rng.choice(self.n_components, size=(T, R), p=self.weights[k])
             # Extract selected components
             for t in range(T):
                 for r in range(R):
@@ -359,7 +358,7 @@ class MixtureDistribution(RewardDistribution):
         return self.components[component_idx].sample_online(arm, rng)
 
     def __repr__(self) -> str:
-        """String representation."""
+        """Return string representation."""
         return (
             f"MixtureDistribution(K={self.K}, n_components={self.n_components}, "
             f"components={self.components})"
@@ -389,6 +388,7 @@ class PerArmDistribution(RewardDistribution):
     """
 
     def __init__(self, arm_distributions: list):
+        """Initialize PerArmDistribution."""
         if not arm_distributions:
             raise ValueError("arm_distributions cannot be empty")
         self.arm_distributions = arm_distributions
@@ -411,4 +411,5 @@ class PerArmDistribution(RewardDistribution):
         return self.arm_distributions[arm].sample_online(0, rng)
 
     def __repr__(self) -> str:
+        """Return string representation."""
         return f"PerArmDistribution(K={self.K}, distributions={self.arm_distributions})"

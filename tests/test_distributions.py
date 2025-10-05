@@ -5,11 +5,7 @@ import pytest
 from scipy import stats
 
 from research_bandits_methods.bandits.distributions import (
-    BernoulliRewards,
     GaussianRewards,
-    MixtureDistribution,
-    PerArmDistribution,
-    StudentTRewards,
 )
 
 
@@ -19,7 +15,11 @@ from research_bandits_methods.bandits.distributions import (
         # Scalar variance (broadcast)
         (np.array([0.3, 0.5, 0.8]), 1.0, np.array([1.0, 1.0, 1.0])),
         # Per-arm variances
-        (np.array([0.3, 0.5, 0.8]), np.array([1.0, 2.0, 0.5]), np.array([1.0, 2.0, 0.5])),
+        (
+            np.array([0.3, 0.5, 0.8]),
+            np.array([1.0, 2.0, 0.5]),
+            np.array([1.0, 2.0, 0.5]),
+        ),
     ],
 )
 def test_gaussian_rewards_basic(means, variances, expected_variances):
@@ -48,7 +48,9 @@ def test_gaussian_rewards_statistical_properties():
 
         # Test mean
         sample_mean = arm_data.mean()
-        assert abs(sample_mean - means[k]) < 3 * np.sqrt(variances[k] / T), f"Arm {k} mean mismatch"
+        assert abs(sample_mean - means[k]) < 3 * np.sqrt(variances[k] / T), (
+            f"Arm {k} mean mismatch"
+        )
 
         # Test normality using Shapiro-Wilk test
         _, p_value = stats.shapiro(arm_data)
