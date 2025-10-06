@@ -9,13 +9,8 @@ from research_bandits_methods.bandits.distributions import (
     RewardDistribution,
     StudentTRewards,
 )
-from research_bandits_methods.bandits.environment import BanditEnvironment
-from research_bandits_methods.bandits.simulation import BanditSimulator
 
 __all__ = [
-    "BanditEnvironment",
-    "BanditSimulator",
-    "MultiPolicyComparison",
     "RewardDistribution",
     "GaussianRewards",
     "BernoulliRewards",
