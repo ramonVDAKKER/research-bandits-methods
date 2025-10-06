@@ -9,14 +9,14 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
-_FLOAT_TOL = 1e-10
-
+from ..constants import FLOAT_TOL
 
 class RewardDistribution(ABC):
-    """Abstract base class for reward distribution models.
+    """Abstract base class for reward distribution models
 
-    Subclasses must implement `generate_counterfactuals` for simulation mode.
-    Optionally override `sample_online` for efficient real-data sampling.
+    Subclasses must implement:
+    - generate_counterfactuals: for Monte Carlo simulations
+    - sample_online: no counterfactuals, sample single reward
     """
 
     @abstractmethod
@@ -44,10 +44,8 @@ class RewardDistribution(ABC):
 
     @abstractmethod
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
-        """Sample a reward for online/real-data mode (optional override).
+        """Sample only reward for drawn arm.
 
-        Default implementation generates counterfactuals and extracts the needed value
-        (wasteful). Subclasses should override for efficiency in online mode.
 
         Parameters
         ----------
@@ -61,6 +59,11 @@ class RewardDistribution(ABC):
         float
             Sampled reward for the given arm.
         """
+
+    @property
+    def expected_rewards(self) -> np.ndarray:
+        """Return expected reward for each arm."""
+        # Implementation varies by distribution type
 
 
 class GaussianRewards(RewardDistribution):
@@ -94,6 +97,9 @@ class GaussianRewards(RewardDistribution):
         self.means = np.asarray(means, dtype=float)
         self.K = len(self.means)
 
+        if self.K == 0:
+            raise ValueError("means must contain at least one element")
+
         if np.isscalar(variances):
             self.variances = np.full(self.K, float(variances), dtype=float)
         else:
@@ -103,7 +109,7 @@ class GaussianRewards(RewardDistribution):
                     f"Length variances {len(self.variances)} does not match means length {self.K}"
                 )
 
-        if np.any(self.variances <= _FLOAT_TOL):
+        if np.any(self.variances <= FLOAT_TOL):
             raise ValueError("All variances must be strictly positive")
 
     def generate_counterfactuals(
@@ -120,6 +126,11 @@ class GaussianRewards(RewardDistribution):
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
         """Efficiently sample a single reward (no waste)."""
         return rng.normal(self.means[arm], np.sqrt(self.variances[arm]))
+
+    @property
+    def expected_rewards(self) -> np.ndarray:
+        """Return expected reward for each arm."""
+        return self.means
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -159,6 +170,11 @@ class BernoulliRewards(RewardDistribution):
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
         """Efficiently sample a single Bernoulli reward."""
         return float(rng.binomial(1, self.probs[arm]))
+
+    @property
+    def expected_rewards(self) -> np.ndarray:
+        """Return expected reward for each arm."""
+        return self.probs
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -206,7 +222,7 @@ class StudentTRewards(RewardDistribution):
                     f"Length df {len(self.df)} does not match means length {self.K}"
                 )
 
-        if np.any(self.df <= _FLOAT_TOL):
+        if np.any(self.df <= FLOAT_TOL):
             raise ValueError("All degrees of freedom must be strictly positive")
 
     def generate_counterfactuals(
@@ -223,6 +239,11 @@ class StudentTRewards(RewardDistribution):
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
         """Efficiently sample a single Student's t reward."""
         return self.means[arm] + rng.standard_t(self.df[arm])
+
+    @property
+    def expected_rewards(self) -> np.ndarray:
+        """Return expected reward for each arm."""
+        return self.means
 
     def __repr__(self) -> str:
         """Return string representation."""
@@ -321,7 +342,7 @@ class MixtureDistribution(RewardDistribution):
             raise ValueError("All weights must be non-negative")
 
         row_sums = self.weights.sum(axis=1)
-        if not np.allclose(row_sums, 1.0, atol=_FLOAT_TOL):
+        if not np.allclose(row_sums, 1.0, atol=FLOAT_TOL):
             raise ValueError(
                 f"Weights must sum to 1 for each arm, got sums: {row_sums}"
             )
@@ -330,24 +351,25 @@ class MixtureDistribution(RewardDistribution):
         self, T: int, R: int, rng: np.random.Generator
     ) -> np.ndarray:
         """Generate mixture counterfactuals."""
-        # Generate counterfactuals from all components
-        all_counterfactuals = np.stack(
-            [comp.generate_counterfactuals(T, R, rng) for comp in self.components],
-            axis=0,
-        )  # (n_components, T, K, R)
-
-        # Generate component selections per arm
         counterfactuals = np.zeros((T, self.K, R))
+        
+        # Generate component selections for all arms at once
         for k in range(self.K):
-            # Select components for arm k at all (t, r)
             selections = rng.choice(self.n_components, size=(T, R), p=self.weights[k])
-            # Extract selected components
-            for t in range(T):
-                for r in range(R):
-                    counterfactuals[t, k, r] = all_counterfactuals[
-                        selections[t, r], t, k, r
-                    ]
-
+            
+            # Group by component for vectorized sampling
+            for comp_idx in range(self.n_components):
+                mask = selections == comp_idx
+                n_samples = mask.sum()
+                
+                if n_samples > 0:
+                    # Generate only needed samples from this component
+                    # Reshape to scatter back to (T, R) positions
+                    samples = self.components[comp_idx].generate_counterfactuals(
+                        T=n_samples, R=1, rng=rng
+                    )[:, k, 0]
+                    counterfactuals[:, k, :][mask] = samples
+    
         return counterfactuals
 
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
@@ -366,7 +388,7 @@ class MixtureDistribution(RewardDistribution):
 
 
 class PerArmDistribution(RewardDistribution):
-    """Heterogeneous distributions per arm.
+    """Heterogeneous distributions.
 
     Allows each arm to have a completely different reward distribution
     (e.g., arm 0: Bernoulli, arm 1: Gaussian, arm 2: Student's t).
@@ -374,23 +396,34 @@ class PerArmDistribution(RewardDistribution):
     Parameters
     ----------
     arm_distributions : list of RewardDistribution
-        One distribution object per arm. Length must equal K.
+        One distribution object per arm. Each distribution must have K=1
+        (single arm). Use single-element arrays like GaussianRewards([0.5])
+        instead of multi-arm GaussianRewards([0.5, 0.8]).
 
     Examples
     --------
     >>> arm_dists = [
     ...     BernoulliRewards([0.3]),
-    ...     GaussianRewards([0.5], variance=1.0),
-    ...     GaussianRewards([0.8], variance=2.0),
+    ...     GaussianRewards([0.5], variances=1.0),  # Note: variances not variance
+    ...     GaussianRewards([0.8], variances=2.0),
     ... ]
     >>> dist = PerArmDistribution(arm_dists)
-    >>> cf = dist.generate_counterfactuals(T=10, K=3, R=5, rng=np.random.default_rng(42))
+    >>> cf = dist.generate_counterfactuals(T=10, R=5, rng=np.random.default_rng(42))
     """
 
     def __init__(self, arm_distributions: list):
         """Initialize PerArmDistribution."""
         if not arm_distributions:
             raise ValueError("arm_distributions cannot be empty")
+        
+        # Validate each distribution has K=1
+        for i, dist in enumerate(arm_distributions):
+            if dist.K != 1:
+                raise ValueError(
+                    f"Each arm distribution must have K=1, but distribution at index {i} has K={dist.K}. "
+                    f"Use single-arm distributions like GaussianRewards([mean]) instead of GaussianRewards([mean1, mean2])"
+                )
+        
         self.arm_distributions = arm_distributions
         self.K = len(arm_distributions)
 
@@ -409,6 +442,11 @@ class PerArmDistribution(RewardDistribution):
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
         """Sample from the specific arm's distribution."""
         return self.arm_distributions[arm].sample_online(0, rng)
+
+    @property
+    def expected_rewards(self) -> np.ndarray:
+        """Return expected reward for each arm."""
+        return np.array([dist.means[0] for dist in self.arm_distributions])
 
     def __repr__(self) -> str:
         """Return string representation."""
