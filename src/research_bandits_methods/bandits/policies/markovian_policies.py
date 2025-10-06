@@ -61,16 +61,13 @@ Examples
 >>> policy = GaussianThompson(K=5, R=100, prior_mean=0.5, prior_var=0.25, rng=rng)
 """
 
-from loguru import logger
-import pickle
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from pathlib import Path
 
 import numpy as np
+from loguru import logger
 
 from ...constants import FLOAT_TOL
-
 
 # Numerical constants for stability
 EPSILON_SAFE_DIV = 1e-10  # Floor for division to prevent overflow
@@ -190,11 +187,10 @@ class MarkovianBanditPolicy(ABC):
         """
         self._validate_update_inputs(arm, reward)
 
-
         logger.debug(
-                f"Update - Arms: {arm}, Rewards: {reward}, "
-                f"Counts before: {self.counts[arm, np.arange(self.R)]}"
-            )
+            f"Update - Arms: {arm}, Rewards: {reward}, "
+            f"Counts before: {self.counts[arm, np.arange(self.R)]}"
+        )
 
         run_idx = np.arange(self.R, dtype=int)
 
