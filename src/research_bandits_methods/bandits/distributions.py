@@ -446,7 +446,7 @@ class PerArmDistribution(RewardDistribution):
     @property
     def expected_rewards(self) -> np.ndarray:
         """Return expected reward for each arm."""
-        return np.array([dist.means[0] for dist in self.arm_distributions])
+        return np.array([dist.expected_rewards[0] for dist in self.arm_distributions])
 
     def __repr__(self) -> str:
         """Return string representation."""
