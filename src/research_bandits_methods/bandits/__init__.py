@@ -1,6 +1,5 @@
 """Bandit algorithms and simulation framework."""
 
-from research_bandits_methods.bandits.comparison import MultiPolicyComparison
 from research_bandits_methods.bandits.distributions import (
     BernoulliRewards,
     GaussianRewards,
