@@ -11,8 +11,9 @@ import numpy as np
 
 from ..constants import FLOAT_TOL
 
+
 class RewardDistribution(ABC):
-    """Abstract base class for reward distribution models
+    """Abstract base class for reward distribution models.
 
     Subclasses must implement:
     - generate_counterfactuals: for Monte Carlo simulations
@@ -45,7 +46,6 @@ class RewardDistribution(ABC):
     @abstractmethod
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
         """Sample only reward for drawn arm.
-
 
         Parameters
         ----------
@@ -352,16 +352,16 @@ class MixtureDistribution(RewardDistribution):
     ) -> np.ndarray:
         """Generate mixture counterfactuals."""
         counterfactuals = np.zeros((T, self.K, R))
-        
+
         # Generate component selections for all arms at once
         for k in range(self.K):
             selections = rng.choice(self.n_components, size=(T, R), p=self.weights[k])
-            
+
             # Group by component for vectorized sampling
             for comp_idx in range(self.n_components):
                 mask = selections == comp_idx
                 n_samples = mask.sum()
-                
+
                 if n_samples > 0:
                     # Generate only needed samples from this component
                     # Reshape to scatter back to (T, R) positions
@@ -369,7 +369,7 @@ class MixtureDistribution(RewardDistribution):
                         T=n_samples, R=1, rng=rng
                     )[:, k, 0]
                     counterfactuals[:, k, :][mask] = samples
-    
+
         return counterfactuals
 
     def sample_online(self, arm: int, rng: np.random.Generator) -> float:
@@ -415,7 +415,7 @@ class PerArmDistribution(RewardDistribution):
         """Initialize PerArmDistribution."""
         if not arm_distributions:
             raise ValueError("arm_distributions cannot be empty")
-        
+
         # Validate each distribution has K=1
         for i, dist in enumerate(arm_distributions):
             if dist.K != 1:
@@ -423,7 +423,7 @@ class PerArmDistribution(RewardDistribution):
                     f"Each arm distribution must have K=1, but distribution at index {i} has K={dist.K}. "
                     f"Use single-arm distributions like GaussianRewards([mean]) instead of GaussianRewards([mean1, mean2])"
                 )
-        
+
         self.arm_distributions = arm_distributions
         self.K = len(arm_distributions)
 

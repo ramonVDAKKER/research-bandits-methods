@@ -116,7 +116,9 @@ class TestGaussianRewards:
     def test_gaussian_small_variance(self):
         """Test Gaussian with very small variance."""
         dist = GaussianRewards(means=[5.0], variances=1e-6)
-        sims = dist.generate_counterfactuals(T=1000, R=10, rng=np.random.default_rng(42))
+        sims = dist.generate_counterfactuals(
+            T=1000, R=10, rng=np.random.default_rng(42)
+        )
 
         # All samples should be very close to mean
         assert np.abs(sims.mean() - 5.0) < 0.01
@@ -439,7 +441,9 @@ class TestMixtureDistribution:
         weights = np.array([1.0 - 1e-4, 1e-4])
         dist = MixtureDistribution(components=components, weights=weights)
 
-        sims = dist.generate_counterfactuals(T=10000, R=1, rng=np.random.default_rng(42))
+        sims = dist.generate_counterfactuals(
+            T=10000, R=1, rng=np.random.default_rng(42)
+        )
         # Mean should be very close to component 0's mean
         assert np.abs(sims.mean() - 1.0) < 0.1
 
@@ -634,165 +638,6 @@ class TestStudentTRewards:
         assert sims.shape == (100, 3, 50)
         assert np.array_equal(dist.means, means)
         assert np.array_equal(dist.df, expected_df)
-
-    def test_student_t_rewards_invalid_df_length(self):
-        """Test StudentTRewards rejects df array with wrong length."""
-        with pytest.raises(
-            ValueError, match="Length df .* does not match means length"
-        ):
-            StudentTRewards(means=[1.0, 2.0, 3.0], df=[3.0, 5.0])
-
-    def test_student_t_rewards_invalid_negative_df(self):
-        """Test StudentTRewards rejects negative df."""
-        with pytest.raises(
-            ValueError, match="All degrees of freedom must be strictly positive"
-        ):
-            StudentTRewards(means=[1.0, 2.0], df=-1.0)
-
-    def test_student_t_rewards_invalid_zero_df(self):
-        """Test StudentTRewards rejects zero df."""
-        with pytest.raises(
-            ValueError, match="All degrees of freedom must be strictly positive"
-        ):
-            StudentTRewards(means=[1.0, 2.0], df=0.0)
-
-    def test_student_t_rewards_statistical_properties(self):
-        """Test StudentTRewards produces samples with correct mean."""
-        means = np.array([1.0, 2.0, 3.0])
-        df = np.array([5.0, 10.0, 20.0])  # Higher df for more stable estimates
-        dist = StudentTRewards(means=means, df=df)
-        rng = np.random.default_rng(42)
-
-        T = 100_000
-        cf = dist.generate_counterfactuals(T=T, R=1, rng=rng)
-
-        for k in range(len(means)):
-            arm_data = cf[:, k, 0]
-
-            # Test mean (Student's t with df > 1 has mean = location parameter)
-            sample_mean = arm_data.mean()
-            se = arm_data.std() / np.sqrt(T)
-            z_norm = stats.norm.ppf(0.995)  # 99% CI
-
-            assert abs(sample_mean - means[k]) < z_norm * se, (
-                f"Arm {k} mean {sample_mean:.4f} outside CI for expected {means[k]}"
-            )
-
-    def test_student_t_rewards_heavy_tails(self):
-        """Test StudentTRewards with low df produces heavier tails than Gaussian."""
-        # Compare Student's t (df=3) vs Gaussian with same location/scale
-        mean = 0.0
-        df = 3.0
-
-        dist_t = StudentTRewards(means=[mean], df=df)
-        dist_gauss = GaussianRewards(
-            means=[mean], variances=df / (df - 2)
-        )  # Match variance
-
-        rng_t = np.random.default_rng(42)
-        rng_gauss = np.random.default_rng(42)
-
-        T = 50_000
-        cf_t = dist_t.generate_counterfactuals(T=T, R=1, rng=rng_t)
-        cf_gauss = dist_gauss.generate_counterfactuals(T=T, R=1, rng=rng_gauss)
-
-        data_t = cf_t[:, 0, 0]
-        data_gauss = cf_gauss[:, 0, 0]
-
-        # Student's t should have higher kurtosis (heavier tails)
-        kurtosis_t = stats.kurtosis(data_t)
-        kurtosis_gauss = stats.kurtosis(data_gauss)
-
-        assert kurtosis_t > kurtosis_gauss, (
-            f"Student's t kurtosis {kurtosis_t:.4f} should be > "
-            f"Gaussian kurtosis {kurtosis_gauss:.4f}"
-        )
-
-    def test_student_t_rewards_sample_online(self):
-        """Test sample_online method returns correct distribution."""
-        means = np.array([1.0, 2.0, 3.0])
-        df = np.array([10.0, 20.0, 30.0])  # Higher df for stable tests
-        dist = StudentTRewards(means=means, df=df)
-        rng = np.random.default_rng(42)
-
-        n_samples = 100_000
-        for k in range(len(means)):
-            samples = np.array([dist.sample_online(k, rng) for _ in range(n_samples)])
-
-            # Verify samples are floats
-            assert isinstance(samples[0], (float, np.floating))
-
-            # Test mean
-            sample_mean = samples.mean()
-            se = samples.std() / np.sqrt(n_samples)
-            z_norm = stats.norm.ppf(0.995)
-
-            assert abs(sample_mean - means[k]) < z_norm * se, (
-                f"Arm {k} sample_online mean {sample_mean:.4f} outside CI for {means[k]}"
-            )
-
-    def test_student_t_rewards_different_df_per_arm(self):
-        """Test StudentTRewards with very different df values per arm."""
-        means = np.array([0.0, 0.0])
-        df = np.array([2.5, 30.0])  # Very heavy tails vs nearly Gaussian
-
-        dist = StudentTRewards(means=means, df=df)
-        rng = np.random.default_rng(42)
-
-        T = 50_000
-        cf = dist.generate_counterfactuals(T=T, R=1, rng=rng)
-
-        # Arm 0 (df=2.5) should have heavier tails than Arm 1 (df=30)
-        data_0 = cf[:, 0, 0]
-        data_1 = cf[:, 1, 0]
-
-        kurtosis_0 = stats.kurtosis(data_0)
-        kurtosis_1 = stats.kurtosis(data_1)
-
-        assert kurtosis_0 > kurtosis_1, (
-            f"Arm 0 (df=2.5) kurtosis {kurtosis_0:.4f} should be > "
-            f"Arm 1 (df=30) kurtosis {kurtosis_1:.4f}"
-        )
-
-    def test_student_t_rewards_high_df_approaches_gaussian(self):
-        """Test that high df Student's t approaches Gaussian distribution."""
-        mean = 1.0
-        df = 100.0  # Very high df should be nearly Gaussian
-
-        dist = StudentTRewards(means=[mean], df=df)
-        rng = np.random.default_rng(42)
-
-        T = 50_000
-        cf = dist.generate_counterfactuals(T=T, R=1, rng=rng)
-        data = cf[:, 0, 0]
-
-        # High df Student's t should pass normality test
-        _, p_value = stats.jarque_bera(data)
-        assert p_value > 0.01, (
-            f"High df Student's t should be close to normal (p={p_value:.4f})"
-        )
-
-    def test_student_t_rewards_variance_formula(self):
-        """Test Student's t variance formula: var = df/(df-2) for df > 2."""
-        mean = 0.0
-        df = 10.0  # df > 2 so variance exists
-
-        dist = StudentTRewards(means=[mean], df=df)
-        rng = np.random.default_rng(42)
-
-        T = 100_000
-        cf = dist.generate_counterfactuals(T=T, R=1, rng=rng)
-        data = cf[:, 0, 0]
-
-        # Expected variance for standard Student's t
-        expected_var = df / (df - 2)
-        sample_var = data.var(ddof=1)
-
-        # Allow 5% tolerance due to sampling variability
-        assert abs(sample_var - expected_var) / expected_var < 0.05, (
-            f"Sample variance {sample_var:.4f} should be close to "
-            f"theoretical {expected_var:.4f}"
-        )
 
     def test_student_t_rewards_invalid_df_length(self):
         """Test StudentTRewards rejects df array with wrong length."""
